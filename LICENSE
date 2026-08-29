@@ -1,0 +1,37 @@
+MIT License
+
+Copyright (c) 2026 MIJI620
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+== 分层许可说明 (License layering) ==
+
+本仓库自写的脚本、Dockerfile、配置与文档（根目录、ComfyUI-docker/、
+ComfyUI-testkit/，以及 ComfyUI-experience/ 下除 versions/ 之外的内容）
+受上述 MIT 许可约束。
+
+例外/注明 (Notice)：
+- `ComfyUI-experience/versions/0.34.0/` 是上游 **ComfyUI** 的源代码副本，
+  其许可证为上游采用的 **GPL-3.0**（Copyright: Comfy Org 及各自贡献者）。
+  该部分保留上游许可，不适用 MIT。上游可见：
+    https://github.com/Comfy-Org/ComfyUI
+  构建该部分生成的镜像/分发物应遵守 GPL-3.0。
+- 其余第三方组件（如 PyTorch / ComfyUI 依赖）各有其自有许可证，
+  请以各上游为准。本仓库不包含模型文件。

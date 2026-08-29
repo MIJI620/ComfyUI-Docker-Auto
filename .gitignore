@@ -7,8 +7,10 @@
 # 1) 默认忽略根下所有第一级内容
 /*
 
-# 2) 白名单: 只放行这三个子目录(以及本文件本身)
+# 2) 白名单: 只放行这三个子目录(以及本文件、根 README/LICENSE 本身)
 !/.gitignore
+!/README.md
+!/LICENSE
 !/ComfyUI-docker/
 !/ComfyUI-experience/
 !/ComfyUI-testkit/
