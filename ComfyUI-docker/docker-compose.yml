@@ -1,0 +1,56 @@
+# ============================================================================
+# ComfyUI 0.34.0 —— 支持自选版本 + 自选启动方式
+#
+# 用法:
+#   cd ComfyUI-docker
+#   docker compose up -d --build          # 默认: 在线拉取 0.34.0 + gpu 预设
+#   docker compose run comfyui --preset=cpu
+#   访问 http://<服务器IP>:8189 (端口 = EXPOSE_PORT / 选中的 preset.port, 需与 ports 映射一致)
+#
+# 版本来源(改下方 ARGS / target):
+#   remote : 在线拉取 tag  (默认 target: remote-stage)
+#   local  : 用本地 versions/<名字>/ 目录 (改 target: local-stage, 并设 COMFYUI_VERSION=名字)
+#
+# 启动方式(preset)在 comfyui.json 中配置,运行时用:
+#   docker compose run comfyui --preset=lowvram
+#   docker compose exec comfyui ...   (对已运行容器额外传参用 run)
+#
+# 前提: 宿主机装了 Docker + NVIDIA Container Toolkit。
+# ============================================================================
+
+name: comfyui
+
+services:
+  comfyui:
+    image: comfyui-docker:latest
+    build:
+      context: ..
+      dockerfile: app/docker/Dockerfile
+      # 选 remote-stage(在线拉取) 或 local-stage(用本地目录)
+      target: remote-stage
+      args:
+        COMFYUI_VERSION: "0.34.0"   # remote: GitHub tag 版本号; local: versions/ 子目录名
+        COMFYUI_SOURCE: "remote"
+    runtime: nvidia               # 使用 NVIDIA Container Toolkit
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - PRESET=gpu                # 默认启动预设(可被命令行 --preset= 覆盖)
+      - EXPOSE_PORT=8189          # 与 gpu 预设的对外端口一致; 改预设时同步改这里与下方 ports
+    ports:
+      - "8189:8189"               # ComfyUI Web UI 对外端口(取 EXPOSE_PORT / 选中的 preset.port)
+    volumes:
+      - ./comfyui.json:/config/comfyui.json:ro   # 启动预设配置(只读)
+      - ./certs:/config/certs:ro                 # 可选 HTTPS: 放 fullchain.pem + privkey.pem 即启用, 否则 HTTP
+      - ./models:/workspace/comfyui/models       # 模型(可指向真实模型目录)
+      - ./input:/workspace/comfyui/input         # 输入图
+      - ./output:/workspace/comfyui/output       # 生成图
+      - ./user:/workspace/comfyui/user           # 用户配置/工作流
+    restart: unless-stopped
+    # 健康检查已内置于镜像(Dockerfile HEALTHCHECK, 探 127.0.0.1:8188 / EXPOSE_PORT), compose 默认继承。

@@ -1,0 +1,48 @@
+# ============================================================================
+# docker-compose.override.yml —— 部署时的按需覆盖示例（端口 / 挂载）
+#
+# 用法: 1) 复制为 docker-compose.override.yml; 2) 按需改; 3) docker compose up -d
+#   compose 会自动加载与主文件同名的 `<服务名>.override.yml`, 与 docker-compose.yml 合并。
+#
+# ⚠️ 合并语义提示(易踩的坑):
+#   - ports / volumes 这类【列表】字段, override 里的值是【整体替换】而非追加:
+#     若 override 里写了 volumes, 主 docker-compose.yml 里的挂载将不再生效, 需在此写全。
+#   - environment / 顶层字段是【合并】: 同名 key 由 override 覆盖, 其它保留。
+#
+# 这里给的是"最小化覆盖"的写法(只改端口 + 补挂载), 保证不与主文件冲突。
+# ============================================================================
+
+name: comfyui
+
+services:
+  comfyui:
+    # ---- 改对外端口(必须与 EXPOSE_PORT 及 preset.port 对应, 不能只改一处) ----
+    ports:
+      - "8299:8299"                # 对外端口改到 8299
+    environment:
+      - EXPOSE_PORT=8299           # 与 ports 保持一致; 否则对外端口仍按 preset.port 监听
+
+    # ---- 改/追加挂载(volumes 是整段替换, 这里必须把需要的挂载写全) ----
+    # 说明: 主 docker-compose.yml 里 volumes = comfyui.json + models + input + output + user
+    #       若 override 里只要调整模型目录, 需把其余也一并写上, 否则它们不生效。
+    volumes:
+      - ./comfyui.json:/config/comfyui.json:ro            # 预设配置(只读)
+      - /data/ai/models:/workspace/comfyui/models         # 模型目录: 指向宿主机真实路径
+      - ./input:/workspace/comfyui/input                  # 输入图
+      - ./output:/workspace/comfyui/output                # 生成图
+      - ./user:/workspace/comfyui/user                    # 用户配置/工作流
+
+    # ---- 可选: 内存/GPU 相关, 与 preset.resources 配合 ----
+    deploy:
+      resources:
+        limits:
+          memory: 32g
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+
+    # ---- 可选: 换启动预设 ----
+    # environment:
+    #   - PRESET=lowvram

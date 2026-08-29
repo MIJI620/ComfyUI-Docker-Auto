@@ -1,0 +1,5 @@
+# ComfyUI-testkit 子目录排除项
+# 说明: 本子目录用于测试, 不内置 ComfyUI 源码(用 remote-stage 或内部自行放置 versions/<版本>/).
+versions/
+log.txt
+logs/

@@ -1,0 +1,33 @@
+# ============================================================================
+# Docker 构建上下文 .dockerignore
+# 构建上下文 = 本目录 (ComfyUI-docker 根, compose 的 build.context: ..)。
+# 只把当前需要的 app/docker + comfyui.json + versions/<版本>/ 传给 docker 引擎;
+# 排除压缩包、版本缓存、运行时目录与日志,避免 context 巨大/冲突/脏。
+# ============================================================================
+
+# 巨型压缩/archives
+*.zip
+*.7z
+*.rar
+*.tar.gz
+
+# 版本控制 / 缓存 / Python 字节码
+.git/
+**/.git/
+.gitignore
+.history/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# 运行时数据与临时物（一律经 volume 挂载, 不打进镜像）
+models/
+input/
+output/
+user/
+logs/
+*.log
+.tmp/
+
+# 其它临时
+*~

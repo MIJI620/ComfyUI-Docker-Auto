@@ -1,0 +1,4 @@
+# ComfyUI-docker 子目录排除项
+# 说明: 本子目录不含 ComfyUI 源码。构建时用 remote-stage 在线拉取, 或自行放入 versions/<版本>/。
+# 因此 versions/ 保留在本地但不进仓库。
+versions/
