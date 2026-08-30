@@ -26,7 +26,7 @@
 - **多阶段镜像**：`local-stage`(用本地源码) / `remote-stage`(在线拉取)，任选。
 - **国内网络友好**：
   - base 镜像可切国内源(如 `docker.m.daocloud.io/library/python:3.13-slim`)；
-  - PyPI 与 torch 下载源由 `net_lib.sh` 对候选源做**真实 HTTP 200 嗅探自动选取**(官方源仅兜底)，并带超时容错(`NET_LIB_TOTAL_TIMEOUT`)。
+  - torch / cu130 下载由 `net_lib.sh` **自动判断源类型**(simple 索引 vs flat 目录) 并**按真实下载反馈速度择优**：flat 用精确 wheel 直链、simple 用 `--index-url`，国内优先、官方兜底；带超时容错(`NET_LIB_TOTAL_TIMEOUT`)。
 - **认证与安全**：预设级 nginx BasicAuth(bcrypt)、每用户并发 `concurrency`、可选 HTTPS、内置 `HEALTHCHECK`。
 - **Windows 可视化体验包**：免 Docker 知识，一键修复环境 + 启动 CPU 无认证 ComfyUI，自带黑色命令行面板、CPU/GPU 状态。
 
