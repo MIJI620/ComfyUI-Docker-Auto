@@ -109,6 +109,15 @@ def main() -> int:
     out.append(upstream_block)
 
     def server_block(ssl_mode):
+        # proxy 指令(两个 location 共用: 其它 / 命令类)
+        def proxy_lines():
+            return ("            proxy_pass http://comfyui;",
+                    "            proxy_http_version 1.1;",
+                    "            proxy_set_header Host $host;",
+                    "            proxy_set_header X-Real-IP $remote_addr;",
+                    "            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+                    "            proxy_read_timeout 3600s;",
+                    "            proxy_buffering off;")
         lines = []
         if ssl_mode:
             lines.append(f"    server {{")
@@ -122,21 +131,22 @@ def main() -> int:
         if enabled:
             lines.append(f"        # 用户名密码认证\n        auth_basic \"{realm}\";")
             lines.append(f"        auth_basic_user_file {args.htpasswd};")
+        lines.append("")
+        lines.append("        # 静态/其它资源(JS/CSS/页面): 不做并发限制, 否则会卡浏览器并行加载")
+        lines.append("        location / {")
+        for pl in proxy_lines():
+            lines.append(pl)
+        lines.append("        }")
+        # 命令/API 类路径: 才按用户并发限制(upload/prompt/queue 等动作用户请求)
         if enabled and limited:
             lines.append("")
-            lines.append("        # 按登录用户并发限制(每用户独立 zone + 常量额度; 由 auth.users[].concurrency 决定)")
+            lines.append("        # 命令/API 类请求(上传/生图/队列等)才按登录用户并发限制; 静态资源不受限")
+            lines.append('        location ~ ^/(prompt|queue|history|interrupt|free|object_info|system_stats|upload/|view|ws|api/|internal/|extensions/) {')
             for i, (uname, conc) in enumerate(limited):
-                lines.append(f"        limit_conn conn{i} {conc};")
-        lines.append("")
-        lines.append("        location / {")
-        lines.append("            proxy_pass http://comfyui;")
-        lines.append("            proxy_http_version 1.1;")
-        lines.append("            proxy_set_header Host $host;")
-        lines.append("            proxy_set_header X-Real-IP $remote_addr;")
-        lines.append("            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;")
-        lines.append("            proxy_read_timeout 3600s;")
-        lines.append("            proxy_buffering off;")
-        lines.append("        }")
+                lines.append(f"            limit_conn conn{i} {conc};")
+            for pl in proxy_lines():
+                lines.append(pl)
+            lines.append("        }")
         lines.append("    }")
         return "\n".join(lines)
 

@@ -27,7 +27,7 @@
 - **国内网络友好**：
   - base 镜像可切国内源(如 `docker.m.daocloud.io/library/python:3.13-slim`)；
   - torch / cu130 下载由 `net_lib.sh` **自动判断源类型**(simple 索引 vs flat 目录) 并**按真实下载反馈速度择优**：flat 用精确 wheel 直链、simple 用 `--index-url`，国内优先、官方兜底；带超时容错(`NET_LIB_TOTAL_TIMEOUT`)。
-- **认证与安全**：预设级 nginx BasicAuth(bcrypt)、每用户并发 `concurrency`、可选 HTTPS、内置 `HEALTHCHECK`。
+- **认证与安全**：预设级 nginx BasicAuth(bcrypt)、每用户并发 `concurrency`（仅限制命令/API 类请求，静态资源不受限，避免卡浏览器页面加载）、可选 HTTPS、内置 `HEALTHCHECK`。
 - **Windows 可视化体验包**：免 Docker 知识，一键修复环境 + 启动 CPU 无认证 ComfyUI，自带黑色命令行面板、CPU/GPU 状态。
 
 ## 快速开始
