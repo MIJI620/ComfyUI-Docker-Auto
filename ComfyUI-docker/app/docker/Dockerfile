@@ -92,20 +92,41 @@ RUN . /usr/local/bin/net_lib.sh \
             torchaudio==2.11.0 \
             ${CPU_IDX:+--index-url "$CPU_IDX"}; \
     else \
-      echo "torch CUDA: probing 3 cu130 wheels on each mirror (HTTP 200 only)" \
-      && CU_IDX="$(pick_first_200 \
-            "torch-2.13.0%2Bcu130-cp313-cp313-manylinux_2_28_x86_64.whl" \
-            "torchvision-0.28.0%2Bcu130-cp313-cp313-manylinux_2_28_x86_64.whl" \
-            "torchaudio-2.11.0%2Bcu130-cp313-cp313-manylinux_2_28_x86_64.whl" \
-          "https://mirrors.aliyun.com/pytorch-wheels/cu130" \
+      echo "torch CUDA: probing cu130 sources by TYPE + SPEED (pick_torch_source)..." \
+      && TORCH_SRC="$(pick_torch_source \
+            "torch-2.13.0%2Bcu130-cp313-cp313-manylinux_2_28_x86_64.whl torchvision-0.28.0%2Bcu130-cp313-cp313-manylinux_2_28_x86_64.whl torchaudio-2.11.0%2Bcu130-cp313-cp313-manylinux_2_28_x86_64.whl" \
+            "torch/" 2097152 \
           "https://mirror.sjtu.edu.cn/pytorch-wheels/cu130" \
+          "https://mirrors.aliyun.com/pytorch-wheels/cu130" \
           "https://download.pytorch.org/whl/cu130")" \
-      && echo "torch CUDA index: ${CU_IDX:-none}" \
-      && pip install --no-cache-dir \
-            torch==2.13.0+cu130 \
-            torchvision==0.28.0+cu130 \
-            torchaudio==2.11.0+cu130 \
-            ${CU_IDX:+--index-url "$CU_IDX"}; \
+      && SRC_TYPE="$(printf '%s\n' "$TORCH_SRC" | sed -n 1p)" \
+      && SRC="$(printf '%s\n' "$TORCH_SRC" | sed -n 2p)" \
+      && echo "torch CUDA source: type=${SRC_TYPE:-none} base=${SRC:-none}" \
+      && DEP_IDX="$(pick_first_200 "torch/ torchvision/ torchaudio/" \
+            "https://pypi.tuna.tsinghua.edu.cn/simple" \
+            "https://mirrors.aliyun.com/pypi/simple" \
+            "https://mirrors.cloud.tencent.com/pypi/simple" \
+            "https://mirrors.ustc.edu.cn/pypi/simple" \
+            "https://pypi.org/simple")" \
+      && DEP_IDX="${DEP_IDX:-https://pypi.org/simple}" \
+      && if [ "$SRC_TYPE" = "simple" ]; then \
+           echo "torch CUDA: use --index-url (simple)" \
+           && pip install --no-cache-dir \
+                torch==2.13.0+cu130 torchvision==0.28.0+cu130 torchaudio==2.11.0+cu130 \
+                --index-url "$SRC"; \
+         elif [ "$SRC_TYPE" = "flat" ]; then \
+           echo "torch CUDA: flat source -> direct wheel URLs ($SRC), deps from $DEP_IDX" \
+           && pip install --no-cache-dir \
+                "$SRC/torch-2.13.0%2Bcu130-cp313-cp313-manylinux_2_28_x86_64.whl" \
+                "$SRC/torchvision-0.28.0%2Bcu130-cp313-cp313-manylinux_2_28_x86_64.whl" \
+                "$SRC/torchaudio-2.11.0%2Bcu130-cp313-cp313-manylinux_2_28_x86_64.whl" \
+                --index-url "$DEP_IDX"; \
+         else \
+           echo "WARN: no cu130 source reachable; trying official simple" \
+           && pip install --no-cache-dir \
+                torch==2.13.0+cu130 torchvision==0.28.0+cu130 torchaudio==2.11.0+cu130 \
+                --index-url https://download.pytorch.org/whl/cu130; \
+         fi; \
     fi
 
 # ================= local-stage : 用本地源码 =================

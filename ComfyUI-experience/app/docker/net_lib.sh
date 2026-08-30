@@ -61,3 +61,70 @@ pick_first_200() {
     done
     return 1
 }
+
+# ============================================================================
+# pick_torch_source —— 为 torch/torchvision/torchaudio 选择"可用且反馈最快"的源,
+# 并自动判断源类型:
+#   - simple 索引(PEP503, 有 /torch/ 页用 <a href) => 可用 --index-url
+#   - flat 目录(散装 .whl, 无 simple 页, 但 wheel 文件可达) => 只能精确用 wheel 文件 URL
+#     直链安装(--find-links <目录URL> 无效: pip 要求该 URL 返回 HTML 目录列表才会扫, 否则报 versions:none)
+# 选源依据 = 真实网络反馈(对 flat 候选做限量 Range 下载测速), 选最快的可用 flat;
+#           一个 flat 都没有时才 fallback 到 simple(官方)兜底。
+#
+# 用法:
+#   OUT="$(pick_torch_source "<w1> <w2> <w3>" "<simple_probe>" <samplesz> "<base1>" ...)"
+#     参数1: 空格分隔的三个必需 wheel 文件名(flat 直链判定用)
+#     参数2: simple 探针相对路径(通常 torch/)
+#     参数3: 测速下载样本字节数(默认 2097152=2MB)
+#     其余 : 候选 base(国内在前, 官方最后兜底)
+# 输出(两行):
+#   <simple|flat>
+#   <base>
+#   全不可用 => stdout 为空(调用方自行 fallback)。
+# ============================================================================
+pick_torch_source() {
+    wheels="$1"; probe="$2"; samp="${3:-2097152}"; shift 3
+    best_type=""; best=""; best_rate=0
+    # 第一轮: 找可用 flat(三个 wheel 都能真实拿到, 跟随重定向), 并按下载速率选最快的
+    for base in "$@"; do
+        b="${base%/}"
+        ok=1
+        for f in $wheels; do
+            # -L 跟随重定向 + Range 微小探测: 302/301(转发)只要真能拿到也算可用
+            c="$(curl -sIL -r 0-0 -o /dev/null -w '%{http_code}' -m "${NET_LIB_TOTAL_TIMEOUT:-25}" "$b/$f" 2>/dev/null || echo 000)"
+            case "$c" in
+                200|206) : ;;
+                *) echo "  skip(flat) source: $b/$f (http=$c)" >&2; ok=0; break ;;
+            esac
+        done
+        if [ "$ok" = "1" ]; then
+            # 限量 Range 下载测速(只取前 samp 字节, 不落盘), 以真实反馈选最快的
+            out="$(curl -sL -r 0-$((samp-1)) -o /dev/null \
+                 -m "${NET_LIB_TOTAL_TIMEOUT:-40}" \
+                 -w '%{http_code} %{size_download} %{time_total}' "$b/$(echo $wheels | awk '{print $1}')" 2>/dev/null)"
+            code="$(echo "$out" | awk '{print $1}')"
+            sz="$(echo "$out" | awk '{print $2}')"
+            t="$(echo "$out" | awk '{print $3}')"
+            rate="$(echo "$t" | awk -v s="$sz" '{if($1>0) printf "%.0f", s/$1; else print 0}')"
+            echo "  flat OK: $b  (range ${sz}B in ${t}s => ~${rate}B/s)" >&2
+            if [ -z "$best_rate" ] || [ "$rate" -gt "$best_rate" ]; then
+                best_type=flat; best="$b"; best_rate="$rate"
+            fi
+        fi
+    done
+    if [ -n "$best" ]; then
+        echo "$best_type"; echo "$best"
+        return 0
+    fi
+    # 第二轮: 无 flat 可用, fallback 到 simple(有 /torch/ 页且是 PEP503) 的一个
+    for base in "$@"; do
+        b="${base%/}"
+        i="$(url_status "$b/$probe")"
+        if [ "$i" = "200" ] && curl -s -m "${NET_LIB_TOTAL_TIMEOUT:-20}" "$b/$probe" 2>/dev/null | grep -q '<a href'; then
+            echo "  simple OK: $b" >&2
+            echo "simple"; echo "$b"
+            return 0
+        fi
+    done
+    return 1
+}
