@@ -181,9 +181,10 @@ docker run -d --name comfyui \
     { "username": "tom",   "hash": "$2b$10$..." }                       // 未写 = 严格保守默认 1
 ]}
 ```
-- `-1` = 无限；`0` = 禁用（该用户即使被某预设列入 `auth_users` 也无法登录，直接 401）；`1..N` = 同时最多 N 个连接。
-- **未配置 `concurrency` 时默认 = `1`**（保守：漏写不放开，最多同时 1 个连接）。
-- 实现：nginx 的 `limit_conn zone number` 的 number 必须是**常量**（不接受变量），因此为每个**有限额**用户（`concurrency>0`）各生成一条 `map $remote_user → 该用户` + 独立 `limit_conn_zone` + `limit_conn <常量 N>`；该用户请求时 key 非空计入对应 zone、受 N 限制，其他用户 key 为空 → nginx 空 key 不参与限流，从而每个用户独立、额度可不同。`concurrency=-1`(无限)/`0`(禁用) 不生成限制（`0` 的用户已被剥出 htpasswd 走 401）。限流只对开启了认证的预设生效。（原全局 `max_connections` 按 IP 的方式已由此取代。）
+- `-1` = 无限（不生成 limit_conn，浏览器加载不受限，最省事）；`0` = 禁用（即使被某预设列入 `auth_users` 也无法登录，直接 401）；`1..N` = 同时最多 N 个连接（命令/API 类请求）。
+- **并发只限制“命令/API 类请求”**（上传 `/upload/`、提交生图 `/prompt`、队列 `/queue`、历史 `/history`、视图 `/view`、WebSocket `/ws` 等）：`limit_conn` 只加在这些路径上，**静态资源(JS/CSS/页面)不受并发限制**，因此浏览器并行加载不会卡界面。若浏览器单页仍发送较多并发 API，建议该用户设 `-1` 或较大值(如 50)以免误伤。
+- **未配置 `concurrency` 时默认 = `1`**（保守：漏写不放开，命令/API 并发最多 1——仍可能限制浏览器并发调用，建议实际按需调大）。
+- 实现：nginx 的 `limit_conn zone number` 必须为常量，因此为每个**有限额**用户各生成一条 `map $remote_user → 该用户` + 独立 `limit_conn_zone`，并**仅**放在“命令/API”的 `location ~ ^/(prompt|queue|history|upload/|view|ws|api/|...)` 里，`location /`（静态资源）不放 `limit_conn`。`concurrency=-1`(无限)/`0`(禁用) 不生成限制（`0` 已被剥出 htpasswd 走 401）。限流只对开启了认证的预设生效。
 
 ### 四·补充：可选 HTTPS（默认 HTTP；给证书即自动切 HTTPS）
 
