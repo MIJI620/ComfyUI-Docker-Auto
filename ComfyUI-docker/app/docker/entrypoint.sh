@@ -146,6 +146,17 @@ for tok in $EMIT; do
   FINAL_ARGS+=("$tok")
 done
 
+# (=) 强制启动选项: 让 Assets/DB(用户任务/图片记录持久)默认启用。
+#     无论 preset args、EXTRA_ARGS 怎么写 / 设了没有, 只要走本 entrypoint 启动
+#     main.py 就必然带 --enable-assets(已去重防止重复)。
+have_assets=0
+for a in "${FINAL_ARGS[@]}"; do
+  [ "$a" = "--enable-assets" ] && have_assets=1
+done
+if [ "$have_assets" = "0" ]; then
+  FINAL_ARGS+=("--enable-assets")
+fi
+
 echo "[ComfyUI] preset=${PRESET} source=${COMFYUI_SOURCE:-?} version=${COMFYUI_VERSION:-?}"
 python -c "import json,os;d=json.loads(os.environ['CG_DECISION']);print('[ComfyUI] access=%s auth_enabled=%s port=%s vram_gb=%s'%(d.get('access'),d.get('auth_enabled'),d.get('port'),(d.get('resources') or {}).get('reserve_vram_gb')))"
 echo "[ComfyUI] main.py args: ${FINAL_ARGS[*]} $*"

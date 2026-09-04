@@ -167,6 +167,7 @@ def main() -> int:
     ok = ok and "auth_basic_user_file" in conf
     ok = ok and "limit_conn conn0 " in conf   # 每用户独立 zone+常量 limit_conn(admin concurrency=2)
     ok = ok and "proxy_pass http://comfyui" in conf
+    ok = ok and "client_max_body_size 50m;" in conf   # 顶层字段默认 50MB, 覆盖 nginx 1m
     check(f"nginx.conf(auth preset gpu, port {lpp}, auth+limit_conn+proxy)", ok)
     # 认证关闭预设(cpu-noauth): 不应含 auth_basic
     r = subprocess.run(
@@ -175,6 +176,7 @@ def main() -> int:
         encoding="utf-8", errors="replace")
     conf = r.stdout
     ok = r.returncode == 0 and "auth_basic" not in conf
+    ok = ok and "client_max_body_size 50m;" in conf
     check("nginx.conf(no-auth preset cpu-noauth): 无 auth_basic", ok)
 
     print("== 3b) gen_auth.py 用户并发(concurrency) + 可选 HTTPS ==")
@@ -219,6 +221,8 @@ def main() -> int:
         ok = ok and conf.count("zone=conn") == 2
         # 绝不允许 limit_conn 用变量作额度(会致 nginx "invalid number of connections" 启动失败)
         ok = ok and "limit_conn " + "$" not in conf
+        # 顶层无 client_max_body_size 字段 -> 走默认 50MB(覆盖 nginx 1m)
+        ok = ok and "client_max_body_size 50m;" in conf
         check("用户并发(每用户独立 zone+常量; -1无限/3/0禁用/缺省1)", ok)
 
         # HTTPS: 证书存在 => 443 ssl + 80 重定向
@@ -248,6 +252,34 @@ def main() -> int:
         ok = ok and "listen 8189;" in conf
         ok = ok and "listen 443 ssl;" not in conf
         check("默认无证书 - HTTP 保持", ok)
+
+    # client_max_body_size 可配置: 顶层字段值会被写入生成 conf(默认缺省 50m)
+    tmp_cfg3 = dict(tmp_cfg)
+    tmp_cfg3["client_max_body_size"] = "150m"
+    with tempfile.TemporaryDirectory() as td3:
+        cfg3 = os.path.join(td3, "comfyui3.json")
+        with open(cfg3, "w", encoding="utf-8") as f:
+            json.dump(tmp_cfg3, f)
+        # 显式 150m
+        r = subprocess.run(
+            [sys.executable, GEN_AUTH, cfg3, "--preset", "gpu"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        conf3 = r.stdout
+        ok = r.returncode == 0 and "client_max_body_size 150m;" in conf3
+        check("client_max_body_size 显式字段(150m) 覆盖默认", ok, conf3.splitlines()[5] if len(conf3.splitlines()) > 5 else "")
+        # 顶层字段用纯数字 / 带 MB 后缀: 归一到 MB
+        for tag, val, want in [("纯数字(按MB)", "1000", "1000m;"), ("带MB后缀", "200MB", "200m;")]:
+            c4 = dict(tmp_cfg)
+            c4["client_max_body_size"] = val
+            cfgp = os.path.join(td3, f"c_{tag}.json")
+            with open(cfgp, "w", encoding="utf-8") as f:
+                json.dump(c4, f)
+            rr = subprocess.run(
+                [sys.executable, GEN_AUTH, cfgp, "--preset", "gpu"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
+            confx = rr.stdout
+            check(f"client_max_body_size {tag} -> {want}",
+                  rr.returncode == 0 and "client_max_body_size " + want in confx)
 
     if FAILURES:
         print(f"\n{'='*50}\nFAILED: {len(FAILURES)} 项:")

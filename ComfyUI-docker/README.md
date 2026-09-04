@@ -26,6 +26,7 @@ ComfyUI-docker/
 └── app/docker/                      # ★ 与 ComfyUI-testkit/app/docker 逐字一致
     ├── Dockerfile                   # 多阶段镜像（base → local/remote stage; 国内镜像 pick_first_200）
     ├── net_lib.sh                   # 统一网络源选择库（PyPI/torch 同一套真实嗅探）
+    ├── wheel_cache.py               # 构建期下载产物哈希缓存（ensure 对照 / ingest 回填, 见下）
     ├── entrypoint.sh                # 读 preset → 拼 main.py 参数 + 按需起 nginx 反代
     ├── gen_auth.py                  # 生成 nginx BasicAuth 配置(按选中预设)
     └── resolve_preset.py            # 解析 comfyui.json 选中的预设
@@ -34,6 +35,25 @@ ComfyUI-docker/
 ---
 
 ## 一、comfyui.json —— 核心运行配置
+
+### 客户端请求体大小上限（`client_max_body_size`，顶层可选）
+```jsonc
+{
+  "default_preset": "gpu",
+  "client_max_body_size": "50m",   // 顶层可选; 缺省默认 50m(50MB 等价)。写入 nginx http 块。
+                                    // 用于覆盖 nginx 默认 1m(1MB): 否则上传 >1MB 的图 / 工作流(multipart)会被 413。
+  "auth": { "realm": "ComfyUI", "users": [ ... ] },
+  "presets": [ ... ]
+}
+```
+> 说明：接受**纯数字(按 MB)**或**数字 + 单位 `k`/`m`/`g`**(大小写宽容, 可带可选 `B` 后缀)。示例：`"1000"`=1000m、`"200MB"`=200m、`"1g"`=1g。**改完需重建容器生效**(nginx conf 在启动时由 gen_auth.py 从 comfyui.json 生成)。
+
+### 用户资产 / 任务记录持久化（`--enable-assets`，默认开启）
+
+Assets/DB 同步为**默认开启**：内置全部预设的 `args` 均含 `--enable-assets`，且 `entrypoint.sh` 在最终启动参数里**强制兜底**（即使预设被改、`EXTRA_ARGS` 不写也必然携带，去掉去重后只会出现一次）。
+- 作用：把 output/models/input 资产与用户任务/图片记录同步进 `user/comfyui.db`（落在 `./user` 挂载卷），**重启/重建不再丢任务与图片历史**（ComfyUI 引擎自带的 history 仅是进程内存态，重启即空）。
+- 与 `--enable-asset-hashing` 区分：后者给资产算 blake3 内容指纹，用于去重/跨机解析，成本较高，**默认不开**；确需时在预设 args 追加即可。
+- ⚠️ 0.34 若不启用 `--enable-assets`，资产/任务不会进 db 同步——前端任务/图片列表在重启后表现为空（看起来像"旧 db 没启用"）。
 
 ### 全局认证密码库（`auth`）
 ```jsonc
@@ -146,6 +166,19 @@ docker build --target remote-stage --build-arg COMFYUI_VERSION=0.34.0 \
   ```
 - 构建日志会打印 `Using PyPI index: ...` / `torch CUDA index: ...`，据此确认真实命中的源。
 
+### 下载产物哈希缓存（wheel_cache.py · 默认开启）
+
+同一台构建机上，torch / requirements 等**大文件网络下载只发生一次**；之后无论改了什么参数、换了项目文件夹、Docker 层缓存是否失效，都**不再联网**：
+
+- 每个需要联网的 RUN 先执行 `wheel_cache.py ensure`：对本地缓存文件**实算 sha256**，与哈希清单（`.manifests/<KEY>.sha256`）逐行对照；
+  - 全部一致 → `HASH-CACHE HIT`：`pip install --no-index --find-links=缓存` **纯离线安装（零网络、零探测）**；
+  - 哈希不同（损坏/下载不完整）或缓存不可用（缺文件/缺清单）→ 才允许联网**回填一次**（`pip download -d` 下载完整闭包），下载完成后**立刻** `wheel_cache.py ingest` 同步算哈希写清单，之后永远命中。
+- **KEY 含版本号**（如 `torch-cu130-2.13.0-0.28.0-2.11.0`、`req-comfyui-0.34.0`）：升级版本自动成为新缓存条目，不会误用旧产物。
+- **存放位置**：不在项目目录、不进镜像/容器，而在**这台构建机的 Docker 引擎（BuildKit cache）**（`RUN --mount=type=cache,id=comfyui-wheels`，默认 Linux 位置 `/var/lib/docker/...buildkit...`）。删项目文件夹 / 删旧镜像**不影响**它；换一台机器 = 新机器首次需联网回填一次，之后命中。
+- ⚠️ `docker builder prune -a` / `docker system prune -a` 会清掉它（清完下次首构建重新回填）；只想清无用旧镜像请用 `docker image prune -a`（不碰 build cache）。
+- 前提：构建需 **BuildKit**（现代 docker/compose 默认开启；老引擎设 `DOCKER_BUILDKIT=1`）。
+- 真机验证：第一次 `docker build` 回填并打印 `hash-ingested ... manifest written`；**第二次**（可断开外网）应打印 `HASH-CACHE HIT` 且纯离线完成。
+
 ### 一键构建+运行（docker-compose，默认 remote + gpu）
 ```bash
 cd ComfyUI-docker
@@ -197,10 +230,10 @@ docker run -d --name comfyui \
     { "username": "tom",   "hash": "$2b$10$..." }                       // 未写 = 严格保守默认 1
 ]}
 ```
-- `-1` = 无限（不生成 limit_conn，浏览器加载不受限，最省事）；`0` = 禁用（即使被某预设列入 `auth_users` 也无法登录，直接 401）；`1..N` = 同时最多 N 个连接（命令/API 类请求）。
-- **并发只限制“命令/API 类请求”**（上传 `/upload/`、提交生图 `/prompt`、队列 `/queue`、历史 `/history`、视图 `/view`、WebSocket `/ws` 等）：`limit_conn` 只加在这些路径上，**静态资源(JS/CSS/页面)不受并发限制**，因此浏览器并行加载不会卡界面。若浏览器单页仍发送较多并发 API，建议该用户设 `-1` 或较大值(如 50)以免误伤。
-- **未配置 `concurrency` 时默认 = `1`**（保守：漏写不放开，命令/API 并发最多 1——仍可能限制浏览器并发调用，建议实际按需调大）。
-- 实现：nginx 的 `limit_conn zone number` 必须为常量，因此为每个**有限额**用户各生成一条 `map $remote_user → 该用户` + 独立 `limit_conn_zone`，并**仅**放在“命令/API”的 `location ~ ^/(prompt|queue|history|upload/|view|ws|api/|...)` 里，`location /`（静态资源）不放 `limit_conn`。`concurrency=-1`(无限)/`0`(禁用) 不生成限制（`0` 已被剥出 htpasswd 走 401）。限流只对开启了认证的预设生效。
+- `-1` = 无限（不生成 limit_conn，浏览器加载不受限，最省事）；`0` = 禁用（即使被某预设列入 `auth_users` 也无法登录，直接 401）；`1..N` = 同时最多 N 个连接（任务/写类请求）。
+- **并发只限制“任务/写”类请求**：提交生图 `/prompt`、队列 `/queue`、历史 `/history`、中断 `/interrupt`、释放 `/free`、上传 `/upload/`（含 `/api/` 下对应端点）。**查询/轮询类(`/api/jobs`)、`/ws`(WebSocket)、静态资源(JS/CSS/页面) 均不受并发限制**，因此浏览器并行加载/轮询/长连接不会卡界面。
+- **未配置 `concurrency` 时默认 = `1`**（保守：漏写不放开，任务/写并发最多 1；若前端同一任务需并行多个请求，建议设 `-1` 或较大值如 50）。
+- 实现：nginx 的 `limit_conn zone number` 必须为常量，因此为每个**有限额**用户各生成一条 `map $remote_user → 该用户` + 独立 `limit_conn_zone`，并**仅**放在“任务/写”的 `location ~ ^/(prompt|queue|history|interrupt|free|upload/)` 与 `location ~ ^/api/(prompt|queue|history|interrupt|free|upload)` 里；`/ws`、`/api/jobs`、静态 `location /` 一律不放 `limit_conn`。`concurrency=-1`(无限)/`0`(禁用) 不生成限制（`0` 已被剥出 htpasswd 走 401）。限流只对开启了认证的预设生效。
 
 ### 四·补充：可选 HTTPS（默认 HTTP；给证书即自动切 HTTPS）
 

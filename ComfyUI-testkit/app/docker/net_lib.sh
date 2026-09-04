@@ -36,6 +36,39 @@ url_status() {
     curl -sI -o /dev/null -w '%{http_code}' --connect-timeout "$c" -m "$t" "$1" 2>/dev/null || echo 000
 }
 
+# ============================================================================
+# 【可选】上次成功源"固定/信任"开关 —— 网络源缓存优先。
+#
+# 机制: 把一段构建里"上次探测成功并实际下载到目标的那次"所用的源 base 记到
+#  一个【宿主机/缓存卷持久文件】里(NETLIB_PIN_FILE)。下一次重建时:
+#    - NETLIB_TRUST_PIN=1  且 pin 非空  => 探测器【直接返回 pin 里的源】,
+#      完全不再做任何网络 HEAD 探测(因为"目标产物已由这个源在本地缓存过/全都在"——
+#      即:没必要时看它今天到底通不通,直接沿用上次命中的那个源路径)。
+#    - NETLIB_TRUST_PIN!=1(默认)         => 维持现状: 每次真实 sniff 挑源(向后兼容)。
+#
+# 适用: 同一台构建机的多设备/多参数反复构建; 缓存目录保证产物在, 省去重复网络探测与换源。
+# 注意代价: trust 是在"产物确定已在"的前提下关闭复核; 一旦缓存失效/换机另说 ——
+#          因此在 Dockerfile 落 mount 且产物齐备时才打开 trust, 见 README。
+# ============================================================================
+# 读回缓存的源 —— pin 文件统一两行: 第1行 kind(pick|flat|simple), 第2行 base。
+# 只在 NETLIB_TRUST_PIN=1 且文件存在时才返回第 2 行(base); 否则输出空。
+_netlib_pin() {
+    [ "${NETLIB_TRUST_PIN:-0}" = "1" ] || return 1
+    [ -n "${NETLIB_PIN_FILE:-}" ] && [ -s "$NETLIB_PIN_FILE" ] || return 1
+    sed -n '2p' "$NETLIB_PIN_FILE" 2>/dev/null
+    return 0
+}
+# 把本次命中的源记入 NETLIB_PIN_FILE(覆写)。写失败不致命。
+# 用法: _netlib_save "simple|flat" "base"  或 传两行。
+_netlib_save() {
+    [ -n "${NETLIB_PIN_FILE:-}" ] || return 0
+    d="${NETLIB_PIN_FILE%/*}"
+    [ "$d" = "$NETLIB_PIN_FILE" ] && d="."
+    mkdir -p "$d" 2>/dev/null
+    printf '%s\n%s\n' "$1" "$2" > "$NETLIB_PIN_FILE" 2>/dev/null
+    return 0
+}
+
 # 从候选源列表中选第一个"真实持有『全部所需』目标文件(HTTP 200)"的 base。
 # 参数1 = 空格分隔的"需要全部存在"的相对路径列表(相对各候选 base);
 #         只有全部路径在该 base 下都返回 HTTP 200 才算该源合法持源(避免只命中其一)。
@@ -44,6 +77,13 @@ url_status() {
 pick_first_200() {
     probe="$1"
     shift
+    # 网络源缓存优先(NETLIB_TRUST_PIN=1 且有 pin): 不探测, 直接沿用上次命中的源。
+    csrc="$(_netlib_pin)"
+    if [ -n "$csrc" ]; then
+        echo "  use cached source: $csrc  (trust pin, skip probing)" >&2
+        echo "$csrc"
+        return 0
+    fi
     for base in "$@"; do
         ok=1
         for f in $probe; do
@@ -55,6 +95,7 @@ pick_first_200() {
             fi
         done
         if [ "$ok" = "1" ]; then
+            _netlib_save "pick" "$base"
             echo "$base"
             return 0
         fi
@@ -84,6 +125,19 @@ pick_first_200() {
 # ============================================================================
 pick_torch_source() {
     wheels="$1"; probe="$2"; samp="${3:-2097152}"; shift 3
+    # torch 源缓存优先: pin 记的是(flat|simple, base)。产物已缓存且 trust=1 时,
+    # 不重探测, 直接沿用上次的那个源(后续 runner 会把它镜像到本地缓存再装)。
+    if [ "${NETLIB_TRUST_PIN:-0}" = "1" ] && [ -n "${NETLIB_PIN_FILE:-}" ] && [ -s "$NETLIB_PIN_FILE" ]; then
+        k="$(sed -n '1p' "$NETLIB_PIN_FILE" 2>/dev/null)"
+        b="$(sed -n '2p' "$NETLIB_PIN_FILE" 2>/dev/null)"
+        case "$k" in
+            flat|simple) [ -n "$b" ] || return 1
+                echo "  use cached torch source: $k $b  (trust pin, skip probing)" >&2
+                echo "$k"; echo "$b"
+                return 0 ;;
+            *) : ;;   # kind 不合(如 pick 单行)则不信任, 走正常探测
+        esac
+    fi
     best_type=""; best=""; best_rate=0
     # 第一轮: 找可用 flat(三个 wheel 都能真实拿到, 跟随重定向), 并按下载速率选最快的
     for base in "$@"; do
@@ -113,6 +167,7 @@ pick_torch_source() {
         fi
     done
     if [ -n "$best" ]; then
+        _netlib_save "$best_type" "$best"
         echo "$best_type"; echo "$best"
         return 0
     fi
@@ -122,6 +177,7 @@ pick_torch_source() {
         i="$(url_status "$b/$probe")"
         if [ "$i" = "200" ] && curl -s -m "${NET_LIB_TOTAL_TIMEOUT:-20}" "$b/$probe" 2>/dev/null | grep -q '<a href'; then
             echo "  simple OK: $b" >&2
+            _netlib_save "simple" "$b"
             echo "simple"; echo "$b"
             return 0
         fi

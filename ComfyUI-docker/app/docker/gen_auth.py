@@ -18,22 +18,53 @@
           从而每个用户独立、额度可不同。仅对开启认证的预设生效(无认证时 $remote_user 为空)。
     - 可选 HTTPS: --certs-dir 下存在 fullchain.pem + privkey.pem 时, 监听 443 ssl
         并把 80 重定向到 443; 否则维持 HTTP 监听 preset.port。
+    - client_max_body_size: 读取 top 层字段(缺省 default "50m")写入 nginx http 块,
+        覆盖 nginx 默认 1m 的请求体限制(否则上传 >1MB 图片/工作流返回 413)。
     - 不再用 {PLAIN} 明文; 密码哈希由 gen_hash(htpasswd -nbB) 生成后写入 comfyui.json
 
 用法:
     python gen_auth.py <comfyui.json> --preset gpu [--htpasswd /etc/nginx/.htpasswd] [--certs-dir /config/certs]
+    # top 层可配: "client_max_body_size": "50m"(数字或缺省按 MB;如 100 / 50m / 1g)
 
 输出到 stdout 为完整 nginx.conf; 提示信息走 stderr。
 """
 import argparse
 import json
 import os
+import re
 import sys
 
 # concurrency 的特殊值
 CONC_UNLIMITED = -1   # 无限
 CONC_DISABLED = 0     # 禁用
 DEFAULT_CONC = 1      # 未配置时的保守默认
+
+# nginx 客户端请求体大小上限: 默认 50MB(用户没配置字段时兜底)
+# 值会写入生成的 nginx.conf 的 http 块 client_max_body_size。
+# 原因: nginx 默认限制为 1m(1MB), 上传较大图片 / 工作流(multipart)会被 413 拦截。
+DEFAULT_CLIENT_MAX_BODY = "50m"
+
+
+def _norm_body_size(raw):
+    """把 comfyui.json 顶层 client_max_body_size 规整为 nginx 单位串。
+
+    接受:
+      - 缺省/None/"None" -> 默认 DEFAULT_CLIENT_MAX_BODY (50m)
+      - 纯数字(如 50 / 100)         -> 按 MB 处理(50m)
+      - 数字+单位(50m / 100MB / 2g), 单位 k/m/g 均可, 大小写与可选 B 后缀宽容
+    非法则抛 ValueError(调用处决定是报错退出还是用默认)。
+    """
+    if raw is None:
+        return DEFAULT_CLIENT_MAX_BODY
+    s = str(raw).strip()
+    if s == "" or s == "None":
+        return DEFAULT_CLIENT_MAX_BODY
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*([kKmMgG]?)\s*([bB]?)$", s)
+    if not m:
+        raise ValueError(f"非法 client_max_body_size: {raw!r} (应为数字或带 k/m/g 单位, 如 100 / 50m / 1g)")
+    num, unit, _ = m.groups()
+    unit = (unit or "m").lower()   # 缺省单位视作 MB(纯数字时按 MB 处理)
+    return f"{num}{unit}"
 
 
 def _norm_conc(v):
@@ -72,6 +103,14 @@ def main() -> int:
                     for u in (data.get("auth", {}).get("users", []) or [])}
     realm = (data.get("auth", {}) or {}).get("realm", "ComfyUI")
 
+    # 客户端请求体大小上限(顶层字段; 无则默认 50MB)。读入 http 块 client_max_body_size。
+    raw_body = data.get("client_max_body_size")
+    try:
+        body_size = _norm_body_size(raw_body)
+    except ValueError as _e:
+        body_size = DEFAULT_CLIENT_MAX_BODY
+        print(f"# WARN: {_e} -> 使用默认 {body_size}", file=sys.stderr)
+
     # 是否启用 HTTPS: 两个证书文件都必须真实存在
     use_https = False
     cert_pem = cert_key = ""
@@ -86,6 +125,8 @@ def main() -> int:
     out.append("    include /etc/nginx/mime.types;")
     out.append("    default_type application/octet-stream;")
     out.append("    sendfile on;")
+    # 客户端请求体大小上限: 覆盖 nginx 默认 1m(否则上传 >1MB 的图/工作流会 413)。
+    out.append(f"    client_max_body_size {body_size};")
 
     # 按用户并发限制(仅认证开启时有意义)。
     # 每个"有限额"用户(concurrency>0)生成独立 zone + map(key=该用户);
@@ -140,8 +181,24 @@ def main() -> int:
         # 命令/API 类路径: 才按用户并发限制(upload/prompt/queue 等动作用户请求)
         if enabled and limited:
             lines.append("")
-            lines.append("        # 命令/API 类请求(上传/生图/队列等)才按登录用户并发限制; 静态资源不受限")
-            lines.append('        location ~ ^/(prompt|queue|history|interrupt|free|object_info|system_stats|upload/|view|ws|api/|internal/|extensions/) {')
+            lines.append("        # WebSocket 长连接: 不参与并发限制(否则重连被限会断, 前端收不到进度)")
+            lines.append("        location /ws {")
+            for pl in proxy_lines():
+                lines.append(pl)
+            lines.append("        }")
+            lines.append("        # /api/jobs: 前端轮询任务列表, 不参与并发限制(否则轮询被限会卡界面)")
+            lines.append("        location ~ ^/api/jobs {")
+            for pl in proxy_lines():
+                lines.append(pl)
+            lines.append("        }")
+            lines.append("        # 只对“任务/写”类请求限流: prompt/queue/history/interrupt/free/upload(含 /api/ 下对应); 查询类与静态/ws 不限")
+            lines.append('        location ~ ^/(prompt|queue|history|interrupt|free|upload/) {')
+            for i, (uname, conc) in enumerate(limited):
+                lines.append(f"            limit_conn conn{i} {conc};")
+            for pl in proxy_lines():
+                lines.append(pl)
+            lines.append("        }")
+            lines.append('        location ~ ^/api/(prompt|queue|history|interrupt|free|upload) {')
             for i, (uname, conc) in enumerate(limited):
                 lines.append(f"            limit_conn conn{i} {conc};")
             for pl in proxy_lines():

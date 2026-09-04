@@ -1,5 +1,6 @@
 {
   "default_preset": "gpu",
+  "client_max_body_size": "50m",
   "auth": {
     "realm": "ComfyUI",
     "max_connections": 50,
@@ -17,90 +18,186 @@
       "description": "默认 NVIDIA GPU 启动 (CUDA), 内网访问",
       "access": "inner",
       "port": 8189,
-      "auth": { "enabled": true, "auth_users": ["admin"] },
-      "args": [],
-      "resources": { "reserve_vram_gb": 8 }
+      "auth": {
+        "enabled": true,
+        "auth_users": [
+          "admin"
+        ]
+      },
+      "args": [
+        "--enable-assets"
+      ],
+      "resources": {
+        "reserve_vram_gb": 8
+      }
     },
     {
       "name": "gpu-public",
       "description": "GPU 启动, 允许公网访问(建议仅信任公网时启用)",
       "access": "public",
       "port": 8190,
-      "auth": { "enabled": true, "auth_users": ["admin"] },
-      "args": [],
-      "resources": { "reserve_vram_gb": 8 }
+      "auth": {
+        "enabled": true,
+        "auth_users": [
+          "admin"
+        ]
+      },
+      "args": [
+        "--enable-assets"
+      ],
+      "resources": {
+        "reserve_vram_gb": 8
+      }
     },
     {
       "name": "cpu",
       "description": "纯 CPU 推理, 支持认证(与性能模式解耦)",
       "access": "inner",
       "port": 8191,
-      "auth": { "enabled": true, "auth_users": ["admin"] },
-      "args": ["--cpu"],
-      "resources": { "reserve_memory_mb": 2048 }
+      "auth": {
+        "enabled": true,
+        "auth_users": [
+          "admin"
+        ]
+      },
+      "args": [
+        "--cpu",
+        "--enable-assets"
+      ],
+      "resources": {
+        "reserve_memory_mb": 2048
+      }
     },
     {
       "name": "cpu-public",
       "description": "纯 CPU, 公开访问, 支持认证",
       "access": "public",
       "port": 8192,
-      "auth": { "enabled": true, "auth_users": ["admin"] },
-      "args": ["--cpu"],
-      "resources": { "reserve_memory_mb": 2048 }
+      "auth": {
+        "enabled": true,
+        "auth_users": [
+          "admin"
+        ]
+      },
+      "args": [
+        "--cpu",
+        "--enable-assets"
+      ],
+      "resources": {
+        "reserve_memory_mb": 2048
+      }
     },
     {
       "name": "cpu-noauth",
       "description": "纯 CPU, 认证关闭(用于验证无认证直连场景)",
       "access": "inner",
       "port": 8198,
-      "auth": { "enabled": false, "auth_users": [] },
-      "args": ["--cpu"],
-      "resources": { "reserve_memory_mb": 2048 }
+      "auth": {
+        "enabled": false,
+        "auth_users": []
+      },
+      "args": [
+        "--cpu",
+        "--enable-assets"
+      ],
+      "resources": {
+        "reserve_memory_mb": 2048
+      }
     },
     {
       "name": "fp16",
       "description": "GPU + fp16 (半精度, 显存充足时更快)",
       "access": "inner",
       "port": 8193,
-      "auth": { "enabled": true, "auth_users": ["admin"] },
-      "args": ["--fp16"],
-      "resources": { "reserve_vram_gb": 8 }
+      "auth": {
+        "enabled": true,
+        "auth_users": [
+          "admin"
+        ]
+      },
+      "args": [
+        "--fp16",
+        "--enable-assets"
+      ],
+      "resources": {
+        "reserve_vram_gb": 8
+      }
     },
     {
       "name": "lowvram",
       "description": "低显存模式 (显存不足时用)",
       "access": "inner",
       "port": 8194,
-      "auth": { "enabled": true, "auth_users": ["admin"] },
-      "args": ["--lowvram"],
-      "resources": { "reserve_vram_gb": 2 }
+      "auth": {
+        "enabled": true,
+        "auth_users": [
+          "admin"
+        ]
+      },
+      "args": [
+        "--lowvram",
+        "--enable-assets"
+      ],
+      "resources": {
+        "reserve_vram_gb": 2
+      }
     },
     {
       "name": "novram",
       "description": "几乎不使用显存 (极端低显存)",
       "access": "inner",
       "port": 8195,
-      "auth": { "enabled": true, "auth_users": ["admin"] },
-      "args": ["--novram"],
-      "resources": { "reserve_vram_gb": 0 }
+      "auth": {
+        "enabled": true,
+        "auth_users": [
+          "admin"
+        ]
+      },
+      "args": [
+        "--novram",
+        "--enable-assets"
+      ],
+      "resources": {
+        "reserve_vram_gb": 0
+      }
     },
     {
       "name": "fast",
       "description": "GPU + fp16 快速启动 (显存充足时)",
       "access": "inner",
       "port": 8196,
-      "auth": { "enabled": true, "auth_users": ["admin"] },
-      "args": ["--fast"],
-      "resources": { "reserve_vram_gb": 8 }
+      "auth": {
+        "enabled": true,
+        "auth_users": [
+          "admin"
+        ]
+      },
+      "args": [
+        "--fast",
+        "--enable-assets"
+      ],
+      "resources": {
+        "reserve_vram_gb": 8
+      }
     },
     {
       "name": "quiet",
       "description": "安静模式 (减少控制台输出)",
       "access": "inner",
       "port": 8197,
-      "auth": { "enabled": true, "auth_users": ["admin"] },
-      "args": ["--quiet"],
-      "resources": { "reserve_vram_gb": 4 }
+      "auth": {
+        "enabled": true,
+        "auth_users": [
+          "admin"
+        ]
+      },
+      "args": [
+        "--quiet",
+        "--enable-assets"
+      ],
+      "resources": {
+        "reserve_vram_gb": 4
+      }
     }
   ]
 }
