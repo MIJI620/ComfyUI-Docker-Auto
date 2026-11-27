@@ -76,8 +76,9 @@ RUN . /usr/local/bin/net_lib.sh \
  && if [ -n "$PICK" ]; then \
       echo "Using PyPI index: $PICK"; \
       pip config set global.index-url "$PICK" && \
-      printf 'PIP_INDEX_URL=%s\n' "$PICK" >> /etc/environment && \
-      export PIP_INDEX_URL="$PICK"; \
+      pip config set global.extra-index-url "https://pypi.org/simple" && \
+      printf 'PIP_INDEX_URL=%s\nPIP_EXTRA_INDEX_URL=%s\n' "$PICK" "https://pypi.org/simple" >> /etc/environment && \
+      export PIP_INDEX_URL="$PICK" PIP_EXTRA_INDEX_URL="https://pypi.org/simple"; \
     else \
       echo "WARN: all PyPI candidates failed; using official default"; \
     fi \
