@@ -1,6 +1,6 @@
 # ComfyUI-Docker —— 自选版本 + 自选启动方式 + 独立认证 + 共享模型库
 
-构建 **NVIDIA GPU Docker 镜像**：`ComfyUI v0.34.0` 源码 + `Python 3.13` + `PyTorch 2.13.0`（GPU=cu130，CPU 可切）。
+构建 **NVIDIA GPU Docker 镜像**：`ComfyUI v0.46.2` 源码 + `Python 3.13` + `PyTorch 2.13.0`（GPU=cu130，CPU 可切）。
 `.app/docker/` 与测试包 `ComfyUI-testkit/app/docker/` **逐字（byte-for-byte）一致**，测试通过即代表本镜像同套逻辑通过。
 
 - **CPU 与 GPU 可切换**：笔记本/无独显用 CPU（`--build-arg COMFYUI_CPU_ONLY=1`），服务器 RTX 用 cu130。
@@ -22,7 +22,7 @@ ComfyUI-docker/
 ├── docker-compose.yml               # 一键构建+运行（GPU, 默认 remote-stage + gpu 预设）
 ├── comfyui.json                     # ★ 运行配置：预设表(含 port/auth) + 全局认证密码库
 ├── versions/                        # ★ 本地版本目录（local 模式用）
-│   └── 0.34.0/                      #   ComfyUI 源码
+│   └── 0.46.2/                      #   ComfyUI 源码
 └── app/docker/                      # ★ 与 ComfyUI-testkit/app/docker 逐字一致
     ├── Dockerfile                   # 多阶段镜像（base → local/remote stage; 国内镜像 pick_first_200）
     ├── net_lib.sh                   # 统一网络源选择库（PyPI/torch 同一套真实嗅探）
@@ -53,7 +53,7 @@ ComfyUI-docker/
 Assets/DB 同步为**默认开启**：内置全部预设的 `args` 均含 `--enable-assets`，且 `entrypoint.sh` 在最终启动参数里**强制兜底**（即使预设被改、`EXTRA_ARGS` 不写也必然携带，去掉去重后只会出现一次）。
 - 作用：把 output/models/input 资产与用户任务/图片记录同步进 `user/comfyui.db`（落在 `./user` 挂载卷），**重启/重建不再丢任务与图片历史**（ComfyUI 引擎自带的 history 仅是进程内存态，重启即空）。
 - 与 `--enable-asset-hashing` 区分：后者给资产算 blake3 内容指纹，用于去重/跨机解析，成本较高，**默认不开**；确需时在预设 args 追加即可。
-- ⚠️ 0.34 若不启用 `--enable-assets`，资产/任务不会进 db 同步——前端任务/图片列表在重启后表现为空（看起来像"旧 db 没启用"）。
+- ⚠️ 未启用 `--enable-assets` 时，资产/任务不会进 db 同步——前端任务/图片列表在重启后表现为空（看起来像"旧 db 没启用"）。
 
 ### 全局认证密码库（`auth`）
 ```jsonc
@@ -122,7 +122,7 @@ Assets/DB 同步为**默认开启**：内置全部预设的 `args` 均含 `--ena
 在 `ComfyUI-docker/` 里先跑一次，确认构建材料齐全、缺了就给出明确报错：
 ```bash
 cd ComfyUI-docker
-bash ./check_build.sh          # 可带版本号: bash ./check_build.sh 0.34.0
+bash ./check_build.sh          # 可带版本号: bash ./check_build.sh 0.46.2
 ```
 > 它会检查 `app/docker/*`、`comfyui.json`、`docker-compose.yml`，以及（local-stage 需要的）`versions/<版本>/`。若你确定走 remote-stage 且无需本地源码，缺失的项目可忽略。
 
@@ -130,18 +130,18 @@ bash ./check_build.sh          # 可带版本号: bash ./check_build.sh 0.34.0
 ```bash
 cd "你的根目录"          # 上级根（含 ComfyUI-docker/）
 docker build --target local-stage \
-  --build-arg COMFYUI_VERSION=0.34.0 \
+  --build-arg COMFYUI_VERSION=0.46.2 \
   --build-arg BASE_IMAGE=docker.m.daocloud.io/library/python:3.13-slim \
   -f ComfyUI-docker/app/docker/Dockerfile -t comfyui-docker:latest .
 ```
-- `versions/0.34.0/` 里的本地源码会被 `COPY` 进镜像（离线/可控，推荐服务器用）。
+- `versions/0.46.2/` 里的本地源码会被 `COPY` 进镜像（离线/可控，推荐服务器用）。
 - GPU 分支的 torch 走国内镜像：构建日志里应出现 `torch CUDA index: https://mirrors.aliyun.com/pytorch-wheels/cu130`（不可达才回退官方）。
 
 ### 方式二：CPU（无独显/测试）
 ```bash
 cd "你的根目录"
 docker build --target local-stage \
-  --build-arg COMFYUI_VERSION=0.34.0 --build-arg COMFYUI_CPU_ONLY=1 \
+  --build-arg COMFYUI_VERSION=0.46.2 --build-arg COMFYUI_CPU_ONLY=1 \
   --build-arg BASE_IMAGE=docker.m.daocloud.io/library/python:3.13-slim \
   -f ComfyUI-docker/app/docker/Dockerfile -t comfyui-test:cpu .
 ```
@@ -149,7 +149,7 @@ docker build --target local-stage \
 ### 方式三：在线拉取源码（remote-stage）
 ```bash
 cd "你的根目录"
-docker build --target remote-stage --build-arg COMFYUI_VERSION=0.34.0 \
+docker build --target remote-stage --build-arg COMFYUI_VERSION=0.46.2 \
   -f ComfyUI-docker/app/docker/Dockerfile -t comfyui-docker:latest .
 ```
 - 需要能访问 `github.com/Comfy-Org/ComfyUI`（国内可改镜像站）。
@@ -173,7 +173,7 @@ docker build --target remote-stage --build-arg COMFYUI_VERSION=0.34.0 \
 - 每个需要联网的 RUN 先执行 `wheel_cache.py ensure`：对本地缓存文件**实算 sha256**，与哈希清单（`.manifests/<KEY>.sha256`）逐行对照；
   - 全部一致 → `HASH-CACHE HIT`：`pip install --no-index --find-links=缓存` **纯离线安装（零网络、零探测）**；
   - 哈希不同（损坏/下载不完整）或缓存不可用（缺文件/缺清单）→ 才允许联网**回填一次**（`pip download -d` 下载完整闭包），下载完成后**立刻** `wheel_cache.py ingest` 同步算哈希写清单，之后永远命中。
-- **KEY 含版本号**（如 `torch-cu130-2.13.0-0.28.0-2.11.0`、`req-comfyui-0.34.0`）：升级版本自动成为新缓存条目，不会误用旧产物。
+- **KEY 含版本号**（如 `torch-cu130-2.13.0-0.28.0-2.11.0`、`req-comfyui-0.46.2`）：升级版本自动成为新缓存条目，不会误用旧产物。
 - **存放位置**：不在项目目录、不进镜像/容器，而在**这台构建机的 Docker 引擎（BuildKit cache）**（`RUN --mount=type=cache,id=comfyui-wheels`，默认 Linux 位置 `/var/lib/docker/...buildkit...`）。删项目文件夹 / 删旧镜像**不影响**它；换一台机器 = 新机器首次需联网回填一次，之后命中。
 - ⚠️ `docker builder prune -a` / `docker system prune -a` 会清掉它（清完下次首构建重新回填）；只想清无用旧镜像请用 `docker image prune -a`（不碰 build cache）。
 - 前提：构建需 **BuildKit**（现代 docker/compose 默认开启；老引擎设 `DOCKER_BUILDKIT=1`）。

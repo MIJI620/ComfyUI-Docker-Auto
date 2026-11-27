@@ -1,9 +1,9 @@
 # ============================================================================
-# ComfyUI 0.46.2 —— 支持自选版本 + 自选启动方式
+# ComfyUI 0.34.0 —— 支持自选版本 + 自选启动方式
 #
 # 用法:
 #   cd ComfyUI-docker
-#   docker compose up -d --build          # 默认: 在线拉取 0.46.2 + gpu 预设
+#   docker compose up -d --build          # 默认: 在线拉取 0.34.0 + gpu 预设
 #   docker compose run comfyui --preset=cpu
 #
 # 版本来源(改下方 ARGS / target):
@@ -28,7 +28,7 @@ services:
       # 选 remote-stage(在线拉取) 或 local-stage(用本地 versions/)
       target: local-stage
       args:
-        COMFYUI_VERSION: "0.46.2"
+        COMFYUI_VERSION: "0.34.0"
         COMFYUI_SOURCE: "local"
     runtime: nvidia               # 使用 NVIDIA Container Toolkit
     deploy:

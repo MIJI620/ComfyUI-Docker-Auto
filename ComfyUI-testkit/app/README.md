@@ -1,6 +1,6 @@
 # ComfyUI-Docker —— 自选版本 + 自选启动方式 + 独立认证 + 共享模型库
 
-基于 `ComfyUI_windows_portable_nvidia`（v0.34 便携包）同一运行配置，用 `ComfyUI-master`（v0.34.0 源码）
+基于 `ComfyUI_windows_portable_nvidia`（v0.34 便携包）同一运行配置，用 `ComfyUI-master`（v0.46.2 源码）
 构建的 **NVIDIA GPU Docker 镜像**，已通过本地端到端测试（build / 启动 / HTTP / 认证开·关 / preset 全绿）。
 
 - **Python 3.13**、**PyTorch 2.13.0**（GPU=cu130 / CPU）与便携包版本对齐
@@ -22,7 +22,7 @@ ComfyUI-testkit/                  # 本测试包；等价于发布包 ComfyUI-do
 ├── docker-compose.yml            # 一键构建+运行（GPU, 默认 remote-stage + gpu 预设）
 ├── comfyui.json                  # ★ 运行配置：预设表(含 port/auth) + 全局认证密码库
 ├── versions/                     # ★ 本地版本目录（local 模式用）
-│   └── 0.34.0/                   #   ComfyUI 源码
+│   └── 0.46.2/                   #   ComfyUI 源码
 └── app/docker/                   # ★ 与发布包 ComfyUI-docker/app/docker 逐字一致
     ├── Dockerfile                # 多阶段镜像（base → local/remote stage; 国内镜像 pick_first_200）
     ├── net_lib.sh                # 统一网络源选择库（PyPI/torch 同一套真实嗅探）
@@ -117,18 +117,18 @@ ComfyUI-testkit/                  # 本测试包；等价于发布包 ComfyUI-do
 ```bash
 cd ComfyUI-testkit
 docker build --target local-stage \
-  --build-arg COMFYUI_VERSION=0.34.0 \
+  --build-arg COMFYUI_VERSION=0.46.2 \
   --build-arg BASE_IMAGE=docker.m.daocloud.io/library/python:3.13-slim \
   -f app/docker/Dockerfile -t comfyui-docker:latest .
 ```
-- `versions/0.34.0/` 里的本地源码会被 `COPY` 进镜像（离线/可控，推荐服务器用）。
+- `versions/0.46.2/` 里的本地源码会被 `COPY` 进镜像（离线/可控，推荐服务器用）。
 - GPU 分支的 torch 走国内镜像：构建日志里应出现 `torch CUDA index: https://mirrors.aliyun.com/pytorch-wheels/cu130`（不可达才回退官方）。
 
 ### 方式二：CPU（无独显/测试）
 ```bash
 cd ComfyUI-testkit
 docker build --target local-stage \
-  --build-arg COMFYUI_VERSION=0.34.0 --build-arg COMFYUI_CPU_ONLY=1 \
+  --build-arg COMFYUI_VERSION=0.46.2 --build-arg COMFYUI_CPU_ONLY=1 \
   --build-arg BASE_IMAGE=docker.m.daocloud.io/library/python:3.13-slim \
   -f app/docker/Dockerfile -t comfyui-test:cpu .
 ```
@@ -136,7 +136,7 @@ docker build --target local-stage \
 ### 方式三：在线拉取源码（remote-stage）
 ```bash
 cd ComfyUI-testkit
-docker build --target remote-stage --build-arg COMFYUI_VERSION=0.34.0 \
+docker build --target remote-stage --build-arg COMFYUI_VERSION=0.46.2 \
   -f app/docker/Dockerfile -t comfyui-docker:latest .
 ```
 - 需要能访问 `github.com/Comfy-Org/ComfyUI`（国内可改镜像站）。
