@@ -216,8 +216,12 @@ print('allowed=%s htpasswd_lines=%d' % (sorted(allowed), len(lines)))
   done
   "$PYTHON_BIN" main.py --listen 127.0.0.1 --port 8188 "${REST[@]}" "$@" &
   COMFY_PID=$!
-  # c) 前台运行 nginx
-  nginx -c /tmp/nginx.comfyui.conf -g "daemon off;"
+  # c) nginx 后台运行, 本 shell 作为 PID 1 收信号并转发给 ComfyUI,
+  #    保证 docker stop 时 ComfyUI 能正常收尾(关闭 DB), 而不是被硬杀。
+  nginx -c /tmp/nginx.comfyui.conf -g "daemon off;" &
+  NGINX_PID=$!
+  trap 'kill -TERM "$COMFY_PID" 2>/dev/null; kill -QUIT "$NGINX_PID" 2>/dev/null; wait; exit 0' TERM INT
+  wait "$NGINX_PID"
 else
   echo "[ComfyUI] 直接启动 ComfyUI (无 BasicAuth 反代)"
   # use venv python so torch & deps are available (system/python may lack them)
